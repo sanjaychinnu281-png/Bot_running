@@ -67,9 +67,8 @@ def get_main_keyboard(user_id: int):
     return InlineKeyboardMarkup(keyboard)
 
 
-# --- ULTIMATE BACKGROUND AUTO-INSTALLER ---
+# --- BACKGROUND AUTO-INSTALLER ---
 def ensure_all_packages_installed():
-    """Startup par hi saari common requirements ko background me install kar leta hai"""
     common_packages = [
         "aiohttp", "requests", "pyrogram", "tgcrypto", "telethon", 
         "beautifulsoup4", "pymongo", "motor", "Pillow", "python-dotenv",
@@ -83,7 +82,6 @@ def ensure_all_packages_installed():
             subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
 
 def auto_install_requirements(file_path):
-    """Scan .py file for any missing imports and auto-install them"""
     if not file_path.endswith('.py'):
         return
     
@@ -133,7 +131,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         f"👋 Welcome **{user.first_name}** to **CHINNU HOSTING BOT**!\n\n"
         "📤 **Koi bhi `.py` file ya `.zip` upload karein.**\n"
-        "⚡ *Universal Auto-Installer Active hai - sab kuch khud-b-खुद manage hoga!*\n\n"
+        "⚡ *Universal Auto-Installer Active hai!*\n\n"
         "👇 Niche diye gaye buttons ka use karein:"
     )
     if update.message:
@@ -380,10 +378,6 @@ async def run_bot_process(file_key: str, query):
 
 
 async def stop_bot_process(file_key: str, query):
-    if file_key not in running_files := running_bots:
-        await query.message.reply_text("❌ Bot run nahi ho raha hai.")
-        return
-
     if file_key not in running_bots:
         await query.message.reply_text("❌ Bot run nahi ho raha hai.")
         return
@@ -420,7 +414,6 @@ async def send_logs(file_key: str, query):
 
 
 def main():
-    # Pre-install common packages in background to avoid any build timeout
     ensure_all_packages_installed()
 
     app = Application.builder().token(BOT_TOKEN).build()
