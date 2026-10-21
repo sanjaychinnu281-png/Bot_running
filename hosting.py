@@ -67,13 +67,26 @@ def get_main_keyboard(user_id: int):
     return InlineKeyboardMarkup(keyboard)
 
 
-# --- ADVANCED SMART AUTO-INSTALLER ---
+# --- ULTIMATE BACKGROUND AUTO-INSTALLER ---
+def ensure_all_packages_installed():
+    """Startup par hi saari common requirements ko background me install kar leta hai"""
+    common_packages = [
+        "aiohttp", "requests", "pyrogram", "tgcrypto", "telethon", 
+        "beautifulsoup4", "pymongo", "motor", "Pillow", "python-dotenv",
+        "yt-dlp", "gtts", "openai", "Flask", "cryptography", "apscheduler"
+    ]
+    for pkg in common_packages:
+        try:
+            __import__(pkg.replace("-", "_"))
+        except ImportError:
+            logger.info(f"Auto-installing core library: {pkg}")
+            subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
+
 def auto_install_requirements(file_path):
-    """Scan .py file for any imports and auto-install missing packages via pip"""
+    """Scan .py file for any missing imports and auto-install them"""
     if not file_path.endswith('.py'):
         return
     
-    # Mapping of import names to pip package names
     import_to_package = {
         "bs4": "beautifulsoup4",
         "telegram": "python-telegram-bot",
@@ -86,24 +99,18 @@ def auto_install_requirements(file_path):
         "gtts": "gtts",
         "yt_dlp": "yt-dlp",
         "google.generativeai": "google-generativeai",
-        "apscheduler": "apscheduler",
-        "yaml": "pyyaml",
-        "cryptography": "cryptography",
-        "speedtest": "speedtest-cli"
+        "apscheduler": "apscheduler"
     }
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
             
-        # Extract all import statements
         imports = re.findall(r'^\s*(?:import|from)\s+([a-zA-Z0-9_]+)', content, re.MULTILINE)
-        
         standard_libs = sys.builtin_module_names + (
             "os", "sys", "time", "json", "re", "math", "random", "datetime", 
             "subprocess", "logging", "asyncio", "pathlib", "shutil", "sqlite3",
-            "urllib", "http", "socket", "threading", "multiprocessing", "collections",
-            "io", "string", "abc", "typing", "functools", "itertools"
+            "urllib", "http", "socket", "threading", "multiprocessing", "collections"
         )
 
         for imp in set(imports):
@@ -113,7 +120,7 @@ def auto_install_requirements(file_path):
             try:
                 __import__(pkg.replace("-", "_"))
             except ImportError:
-                logger.info(f"Auto-installing missing dependency: {pkg}")
+                logger.info(f"Auto-installing missing dependency for script: {pkg}")
                 subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
     except Exception as e:
         logger.error(f"Error in auto-installer: {e}")
@@ -126,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         f"👋 Welcome **{user.first_name}** to **CHINNU HOSTING BOT**!\n\n"
         "📤 **Koi bhi `.py` file ya `.zip` upload karein.**\n"
-        "⚡ *Universal Auto-Installer Active hai - koi bhi bot error nahi dega!*\n\n"
+        "⚡ *Universal Auto-Installer Active hai - sab kuch khud-b-खुद manage hoga!*\n\n"
         "👇 Niche diye gaye buttons ka use karein:"
     )
     if update.message:
@@ -329,7 +336,6 @@ async def run_bot_process(file_key: str, query):
         if os.path.exists(req_file):
             subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=False)
         
-        # Scan and auto-install for all python files inside zip
         for root, _, files in os.walk(extract_folder):
             for file in files:
                 if file.endswith('.py'):
@@ -353,7 +359,6 @@ async def run_bot_process(file_key: str, query):
             await query.message.reply_text("❌ File nahi mili.")
             return
         
-        # Auto-install dependencies for single .py file
         auto_install_requirements(target_path)
         
         cmd = [sys.executable, target_path]
@@ -375,6 +380,10 @@ async def run_bot_process(file_key: str, query):
 
 
 async def stop_bot_process(file_key: str, query):
+    if file_key not in running_files := running_bots:
+        await query.message.reply_text("❌ Bot run nahi ho raha hai.")
+        return
+
     if file_key not in running_bots:
         await query.message.reply_text("❌ Bot run nahi ho raha hai.")
         return
@@ -411,6 +420,9 @@ async def send_logs(file_key: str, query):
 
 
 def main():
+    # Pre-install common packages in background to avoid any build timeout
+    ensure_all_packages_installed()
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
