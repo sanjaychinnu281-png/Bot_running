@@ -67,13 +67,13 @@ def get_main_keyboard(user_id: int):
     return InlineKeyboardMarkup(keyboard)
 
 
-# --- SMART AUTO-INSTALLER ---
+# --- ADVANCED SMART AUTO-INSTALLER ---
 def auto_install_requirements(file_path):
-    """Scan .py file for imports and auto-install missing packages via pip"""
+    """Scan .py file for any imports and auto-install missing packages via pip"""
     if not file_path.endswith('.py'):
         return
     
-    # Mapping of common package names vs import names
+    # Mapping of import names to pip package names
     import_to_package = {
         "bs4": "beautifulsoup4",
         "telegram": "python-telegram-bot",
@@ -81,20 +81,29 @@ def auto_install_requirements(file_path):
         "PIL": "Pillow",
         "mongoengine": "mongoengine",
         "motor": "motor",
-        "pymongo": "pymongo"
+        "pymongo": "pymongo",
+        "dotenv": "python-dotenv",
+        "gtts": "gtts",
+        "yt_dlp": "yt-dlp",
+        "google.generativeai": "google-generativeai",
+        "apscheduler": "apscheduler",
+        "yaml": "pyyaml",
+        "cryptography": "cryptography",
+        "speedtest": "speedtest-cli"
     }
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
             
-        # Find all import statements
+        # Extract all import statements
         imports = re.findall(r'^\s*(?:import|from)\s+([a-zA-Z0-9_]+)', content, re.MULTILINE)
         
         standard_libs = sys.builtin_module_names + (
             "os", "sys", "time", "json", "re", "math", "random", "datetime", 
             "subprocess", "logging", "asyncio", "pathlib", "shutil", "sqlite3",
-            "urllib", "http", "socket", "threading", "multiprocessing", "collections"
+            "urllib", "http", "socket", "threading", "multiprocessing", "collections",
+            "io", "string", "abc", "typing", "functools", "itertools"
         )
 
         for imp in set(imports):
@@ -102,7 +111,7 @@ def auto_install_requirements(file_path):
                 continue
             pkg = import_to_package.get(imp, imp)
             try:
-                __import__(pkg)
+                __import__(pkg.replace("-", "_"))
             except ImportError:
                 logger.info(f"Auto-installing missing dependency: {pkg}")
                 subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
@@ -117,7 +126,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         f"👋 Welcome **{user.first_name}** to **CHINNU HOSTING BOT**!\n\n"
         "📤 **Koi bhi `.py` file ya `.zip` upload karein.**\n"
-        "⚡ *Auto-Installer enabled hai - saari libraries khud install ho jayengi!*\n\n"
+        "⚡ *Universal Auto-Installer Active hai - koi bhi bot error nahi dega!*\n\n"
         "👇 Niche diye gaye buttons ka use karein:"
     )
     if update.message:
@@ -316,31 +325,24 @@ async def run_bot_process(file_key: str, query):
         with zipfile.ZipFile(target_path, 'r') as zip_ref:
             zip_ref.extractall(extract_folder)
         
-        # Check requirements.txt inside zip
         req_file = os.path.join(extract_folder, "requirements.txt")
         if os.path.exists(req_file):
             subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=False)
         
-        # Also auto-install from main.py inside zip
-        main_file = os.path.join(extract_folder, "main.py")
-        if os.path.exists(main_file):
-            auto_install_requirements(main_file)
-        else:
-            # Look for any .py file inside zip
-            for root, _, files in os.walk(extract_folder):
-                for file in files:
-                    if file.endswith('.py'):
-                        auto_install_requirements(os.path.join(root, file))
+        # Scan and auto-install for all python files inside zip
+        for root, _, files in os.walk(extract_folder):
+            for file in files:
+                if file.endswith('.py'):
+                    auto_install_requirements(os.path.join(root, file))
 
+        main_file = os.path.join(extract_folder, "main.py")
         if not os.path.exists(main_file):
-            # find first .py file as fallback
-            found_py = None
             for root, _, files in os.walk(extract_folder):
                 for file in files:
                     if file.endswith('.py'):
                         main_file = os.path.join(root, file)
                         break
-            if not main_file:
+            if not os.path.exists(main_file):
                 await query.message.reply_text("❌ ZIP ke andar koi valid `.py` file nahi mili.")
                 return
         
@@ -351,7 +353,7 @@ async def run_bot_process(file_key: str, query):
             await query.message.reply_text("❌ File nahi mili.")
             return
         
-        # Auto install dependencies for single .py file
+        # Auto-install dependencies for single .py file
         auto_install_requirements(target_path)
         
         cmd = [sys.executable, target_path]
