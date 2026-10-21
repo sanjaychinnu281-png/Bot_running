@@ -5,6 +5,7 @@ import zipfile
 import subprocess
 import logging
 import json
+import re
 import psutil
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -25,15 +26,14 @@ logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8919091291:AAFC70_c3n5WogOwa7nULDEYVd8UEpy96iM")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "8095880938"))  # Aapki Telegram User ID
-ADMIN_USERNAME = "@sbg_mod"  # Aapka Telegram username
+ADMIN_ID = int(os.getenv("ADMIN_ID", "8095880938"))
+ADMIN_USERNAME = "@sbg_mod"
 
 HOSTING_DIR = os.path.abspath("./user_bots")
 DATA_FILE = os.path.abspath("approved_bots.json")
 
 os.makedirs(HOSTING_DIR, exist_ok=True)
 
-# Database structures
 running_bots = {}
 
 def load_data():
@@ -53,7 +53,7 @@ def get_main_keyboard(user_id: int):
     keyboard = [
         [
             InlineKeyboardButton("📁 Your Files", callback_data="btn_my_files"),
-            InlineKeyboardButton("📤 Upload File", callback_data="btn_upload_guide"),
+            InlineKeyboardButton("📤 Upload Guide", callback_data="btn_upload_guide"),
         ],
         [
             InlineKeyboardButton("🏓 Ping", callback_data="btn_ping"),
@@ -61,10 +61,53 @@ def get_main_keyboard(user_id: int):
         ],
         [
             InlineKeyboardButton("👨‍💻 Admin Contact", url=f"https://t.me/{ADMIN_USERNAME.replace('@', '')}"),
-            InlineKeyboardButton("❓ Help / Commands", callback_data="btn_help"),
+            InlineKeyboardButton("❓ Help", callback_data="btn_help"),
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+# --- SMART AUTO-INSTALLER ---
+def auto_install_requirements(file_path):
+    """Scan .py file for imports and auto-install missing packages via pip"""
+    if not file_path.endswith('.py'):
+        return
+    
+    # Mapping of common package names vs import names
+    import_to_package = {
+        "bs4": "beautifulsoup4",
+        "telegram": "python-telegram-bot",
+        "cv2": "opencv-python",
+        "PIL": "Pillow",
+        "mongoengine": "mongoengine",
+        "motor": "motor",
+        "pymongo": "pymongo"
+    }
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+            
+        # Find all import statements
+        imports = re.findall(r'^\s*(?:import|from)\s+([a-zA-Z0-9_]+)', content, re.MULTILINE)
+        
+        standard_libs = sys.builtin_module_names + (
+            "os", "sys", "time", "json", "re", "math", "random", "datetime", 
+            "subprocess", "logging", "asyncio", "pathlib", "shutil", "sqlite3",
+            "urllib", "http", "socket", "threading", "multiprocessing", "collections"
+        )
+
+        for imp in set(imports):
+            if imp in standard_libs:
+                continue
+            pkg = import_to_package.get(imp, imp)
+            try:
+                __import__(pkg)
+            except ImportError:
+                logger.info(f"Auto-installing missing dependency: {pkg}")
+                subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=False)
+    except Exception as e:
+        logger.error(f"Error in auto-installer: {e}")
 
 
 # --- HANDLERS ---
@@ -73,8 +116,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     msg = (
         f"👋 Welcome **{user.first_name}** to **CHINNU HOSTING BOT**!\n\n"
-        "📤 **Send any `.py` file or `.zip` archive** to upload your project.\n"
-        "⚡ *Multiple bots run simultaneously without issues!*\n\n"
+        "📤 **Koi bhi `.py` file ya `.zip` upload karein.**\n"
+        "⚡ *Auto-Installer enabled hai - saari libraries khud install ho jayengi!*\n\n"
         "👇 Niche diye gaye buttons ka use karein:"
     )
     if update.message:
@@ -140,9 +183,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_user_files(query)
     elif data == "btn_upload_guide":
         await query.message.edit_text(
-            "📤 **File Upload Karne Ka Tarika:**\n\n"
-            "Seedhe apni `.py` file ya `.zip` archive is chat me bhej dein (document ki tarah).\n"
-            "Uske baad Admin approval ke baad aap usse run kar sakenge!",
+            "📤 **Upload Kaise Karein:**\n\n"
+            "Seedhe apni `.py` file ya `.zip` archive is chat me document ki tarah bhej dein. Admin approve karte hi aap run kar sakenge!",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="btn_help")]])
         )
@@ -221,8 +263,6 @@ async def show_user_files(query):
     user_prefix = f"{user_id}_"
 
     all_files = os.listdir(HOSTING_DIR)
-    
-    # FILTER: Sirf .py aur .zip files dikhein, .json ya .log files nahi!
     if user_id == ADMIN_ID:
         my_files = [f for f in all_files if (f.endswith('.py') or f.endswith('.zip'))]
     else:
@@ -276,23 +316,44 @@ async def run_bot_process(file_key: str, query):
         with zipfile.ZipFile(target_path, 'r') as zip_ref:
             zip_ref.extractall(extract_folder)
         
+        # Check requirements.txt inside zip
         req_file = os.path.join(extract_folder, "requirements.txt")
         if os.path.exists(req_file):
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=True)
-            except Exception as e:
-                logger.error(f"Pip error: {e}")
-
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=False)
+        
+        # Also auto-install from main.py inside zip
         main_file = os.path.join(extract_folder, "main.py")
+        if os.path.exists(main_file):
+            auto_install_requirements(main_file)
+        else:
+            # Look for any .py file inside zip
+            for root, _, files in os.walk(extract_folder):
+                for file in files:
+                    if file.endswith('.py'):
+                        auto_install_requirements(os.path.join(root, file))
+
         if not os.path.exists(main_file):
-            await query.message.reply_text("❌ ZIP ke andar `main.py` nahi mili.")
-            return
+            # find first .py file as fallback
+            found_py = None
+            for root, _, files in os.walk(extract_folder):
+                for file in files:
+                    if file.endswith('.py'):
+                        main_file = os.path.join(root, file)
+                        break
+            if not main_file:
+                await query.message.reply_text("❌ ZIP ke andar koi valid `.py` file nahi mili.")
+                return
+        
         cmd = [sys.executable, main_file]
         run_cwd = extract_folder
     else:
         if not os.path.exists(target_path):
             await query.message.reply_text("❌ File nahi mili.")
             return
+        
+        # Auto install dependencies for single .py file
+        auto_install_requirements(target_path)
+        
         cmd = [sys.executable, target_path]
         run_cwd = HOSTING_DIR
 
